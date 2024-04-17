@@ -166,6 +166,24 @@ class DuckConnector(DatabaseBlock):
             )
 
     @sync_compatible
+    async def fetch_numpy(
+        self,
+        operation: str,
+        parameters: Optional[Dict[str, Any]] = [],
+    ) -> Any:
+        """
+        Fetch all results of the query from the database as a numpy array.
+        Args:
+            operation: The SQL operation to execute.
+            parameters: The parameters to pass to the operation.
+        """
+        with self._connection.cursor() as cursor:
+            await run_sync_in_worker_thread(cursor.execute, operation, parameters)
+            self.logger.debug("Preparing to fetch all rows.")
+            result = await run_sync_in_worker_thread(cursor.fetchnumpy)
+            return result
+
+    @sync_compatible
     async def fetch_df(
         self,
         operation: str,
@@ -181,6 +199,24 @@ class DuckConnector(DatabaseBlock):
             await run_sync_in_worker_thread(cursor.execute, operation, parameters)
             self.logger.debug("Preparing to fetch all rows.")
             result = await run_sync_in_worker_thread(cursor.df)
+            return result
+
+    @sync_compatible
+    async def fetch_arrow(
+        self,
+        operation: str,
+        parameters: Optional[Dict[str, Any]] = [],
+    ) -> Any:
+        """
+        Fetch all results of the query from the database as an Arrow table.
+        Args:
+            operation: The SQL operation to execute.
+            parameters: The parameters to pass to the operation.
+        """
+        with self._connection.cursor() as cursor:
+            await run_sync_in_worker_thread(cursor.execute, operation, parameters)
+            self.logger.debug("Preparing to fetch all rows.")
+            result = await run_sync_in_worker_thread(cursor.arrow)
             return result
 
     @sync_compatible

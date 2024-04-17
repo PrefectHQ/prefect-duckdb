@@ -56,7 +56,17 @@ class TestDuckConnector:
         result = duck_connector.fetch_all("SELECT * FROM test_table")
         assert result == [(1, "one")]
 
-    def test_fetch_pandas_all(self, duck_connector: DuckConnector):
+    def test_fetch_numpy(self, duck_connector: DuckConnector):
+        pass
+
+        duck_connector.get_connection()
+        duck_connector.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
+        duck_connector.execute("INSERT INTO test_table VALUES (1, 'one')")
+        result = duck_connector.fetch_numpy("SELECT * FROM test_table")
+        assert isinstance(result, dict)
+        assert result["i"] == 1
+
+    def test_fetch_pandas(self, duck_connector: DuckConnector):
         import pandas as pd
 
         duck_connector.get_connection()
@@ -65,6 +75,16 @@ class TestDuckConnector:
         result = duck_connector.fetch_df("SELECT * FROM test_table")
         assert isinstance(result, pd.DataFrame)
         assert result.iloc[0, 0] == 1
+
+    def test_fetch_arrow(self, duck_connector: DuckConnector):
+        import pyarrow as pa
+
+        duck_connector.get_connection()
+        duck_connector.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
+        duck_connector.execute("INSERT INTO test_table VALUES (1, 'one')")
+        result = duck_connector.fetch_arrow("SELECT * FROM test_table")
+        assert isinstance(result, pa.Table)
+        assert result.to_pandas().iloc[0, 0] == 1
 
     def test_create_function(self, duck_connector: DuckConnector):
         duck_connector.get_connection()
