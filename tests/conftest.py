@@ -1,6 +1,6 @@
 import pytest
 from prefect.testing.utilities import prefect_test_harness
-from unittest.mock import MagicMock
+
 
 @pytest.fixture(scope="session", autouse=True)
 def prefect_db():
