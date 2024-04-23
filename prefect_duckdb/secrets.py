@@ -1,3 +1,4 @@
+"""This module contains the DuckDB secrets block."""
 from typing import Literal
 
 from duckdb import DuckDBPyConnection

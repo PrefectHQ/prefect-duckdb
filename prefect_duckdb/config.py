@@ -11,7 +11,7 @@ else:
     from pydantic import Field
 
 
-class DuckConfig(Block):
+class DuckDBConfig(Block):
     """A block for configuring DuckDB."""
 
     _block_type_name = "DuckDB configuation"

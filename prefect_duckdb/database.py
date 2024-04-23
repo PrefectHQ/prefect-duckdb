@@ -3,12 +3,13 @@
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import duckdb
-from duckdb import DuckDBPyConnection
+import pandas
+from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from prefect.blocks.abstract import DatabaseBlock
 from prefect.utilities.asyncutils import run_sync_in_worker_thread, sync_compatible
 from pydantic import VERSION as PYDANTIC_VERSION
 
-from .config import DuckConfig
+from .config import DuckDBConfig
 
 if PYDANTIC_VERSION.startswith("2."):
     from pydantic.v1 import Field
@@ -16,22 +17,53 @@ else:
     from pydantic import Field
 
 
-class DuckConnector(DatabaseBlock):
+class DuckDBConnector(DatabaseBlock):
     """
     A block for connecting to a DuckDB database.
 
     Args:
-        configuration: DuckConfig block to be used when creating connection.
+        configuration: DuckDBConfig block to be used when creating connection.
         database: The name of the default database to use.
         read_only: Whether the connection should be read-only.
+
+    Examples:
+        Load stored DuckDB connector as a context manager:
+        ```python
+        from prefect_duckdb.database import DuckDBConnector
+
+        duckdb_connector = DuckDBConnector.load("BLOCK_NAME"):
+        ```
+
+        Insert data into database and fetch results.
+        ```python
+        from prefect_duckdb.database import DuckDBConnector
+
+        with DuckDBConnector.load("BLOCK_NAME") as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS customers (name varchar, address varchar);"
+            )
+            conn.execute_many(
+                "INSERT INTO customers (name, address) VALUES (%(name)s, %(address)s);",
+                parameters=[
+                    {"name": "Ford", "address": "Highway 42"},
+                    {"name": "Unknown", "address": "Space"},
+                    {"name": "Me", "address": "Myway 88"},
+                ],
+            )
+            results = conn.fetch_all(
+                "SELECT * FROM customers WHERE address = %(address)s",
+                parameters={"address": "Space"}
+            )
+            print(results)
+        ```
     """
 
-    _block_type_name = "DuckDB connector"
-    _logo_url = "https://placeholder.com"  # noqa
+    _block_type_name = "DuckDB Connector"
+    _logo_url = "https://duckdb.org/images/logo-dl/DuckDB_Logo.png"  # noqa
     _documentation_url = "https://placeholder.com"  # noqa
     _description = "Perform data operations against a DuckDb database."
 
-    configuration: DuckConfig = Field(
+    configuration: DuckDBConfig = Field(
         default=..., description="Configuration to be used when creating connection."
     )
     database: str = Field(
@@ -42,9 +74,10 @@ class DuckConnector(DatabaseBlock):
         description="Whether the connection should be read-only.",
     )
     _connection: Optional[DuckDBPyConnection] = None
+    _debug: bool = False
 
     def get_connection(
-        self, read_only: Optional[bool] = None, config: Optional[DuckConfig] = None
+        self, read_only: Optional[bool] = None, config: Optional[DuckDBConfig] = None
     ) -> DuckDBPyConnection:
         """
         Returns an authenticated connection that can be
@@ -56,13 +89,25 @@ class DuckConnector(DatabaseBlock):
 
         Returns:
             A `DuckDBPyConnection` object.
+        Examples:
+            ```python
+            from prefect_duckdb.database import DuckDBConnector
+
+            duckdb_connector = DuckDBConnector.load("BLOCK_NAME")
+
+            with duckdb_connector as conn:
+                conn.execute("CREATE TABLE test_table (i INTEGER, j STRING);")
+                ...
+            ```
         """
         if self._connection is not None:
             return self._connection
+
         config = config or self.configuration.dict(
             exclude_none=True, exclude={"block_type_slug"}
         )
         read_only = read_only or self.read_only
+
         connection = duckdb.connect(
             database=self.database,
             read_only=read_only,
@@ -72,6 +117,89 @@ class DuckConnector(DatabaseBlock):
         self._connection = connection
         self.logger.info(f"Started a new connection to {self.database}.")
         return connection
+
+    @sync_compatible
+    async def execute(
+        self,
+        operation: str,
+        parameters: Optional[Iterable[Any]] = [],
+        multiple_parameter_sets: bool = False,
+        debug: Optional[bool] = False,
+    ) -> DuckDBPyConnection:
+        """
+        Execute the given SQL query, optionally using prepared statements
+        with parameters set.
+
+        Args:
+            operation: The SQL operation to execute.
+            parameters: The parameters to pass to the operation.
+            multiple_parameter_sets: Whether to execute the operation multiple times.
+            debug: Whether to run the operation in debug mode.
+                   Sends the query plan to the logger.
+
+        Examples:
+            ```python
+            from prefect_duckdb.database import DuckDBConnector
+
+            with DuckDBConnector.load("BLOCK_NAME") as conn:
+                conn.execute(
+                    "CREATE TABLE test_table (i INTEGER, j STRING)"
+                )
+            ```
+        """
+        cursor = self._connection.cursor()
+        if self._debug or debug:
+            debug_operation = f"""EXPLAIN \
+                            {operation}"""
+            plan = cursor.execute(debug_operation, parameters)
+            plan = plan.arrow().column("explain_value")[0]
+            self.logger.info(f"""The query plan for the operation is: \n{plan}""")
+        cursor = self._connection.cursor()
+        cursor = await run_sync_in_worker_thread(
+            cursor.execute, operation, parameters, multiple_parameter_sets
+        )
+        self.logger.info(f"Executed the operation, {operation!r}.")
+        return cursor
+
+    @sync_compatible
+    async def execute_many(
+        self,
+        operation: str,
+        parameters: Iterable[Iterable[Any]] = [],
+        debug: Optional[bool] = False,
+    ) -> DuckDBPyConnection:
+        """
+        Execute the given prepared statement multiple times using the
+        list of parameter sets in parameters
+
+        Args:
+            operation: The SQL operation to execute.
+            parameters: The parameters to pass to the operation.
+            debug: Whether to run the operation in debug mode.
+                   Sends the query plan to the logger.
+
+        Examples:
+            ```python
+            from prefect_duckdb.database import DuckDBConnector
+
+            with DuckDBConnector.load("BLOCK_NAME") as conn:
+                conn.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
+                conn.execute_many(
+                    "INSERT INTO test_table VALUES (?, ?)",
+                    parameters=[[1, "one"], [2, "two"], [3, "three"]]
+                )
+            ```
+        """
+        cursor = self._connection.cursor()
+        if self._debug or debug:
+            debug_operation = f"""EXPLAIN \
+                            {operation}"""
+            plan = cursor.executemany(debug_operation, parameters)
+            plan = plan.arrow().column("explain_value")[0]
+            self.logger.info(f"""The query plan for the operation is: \n{plan}""")
+        await run_sync_in_worker_thread(cursor.executemany, operation, parameters)
+        self.logger.info(f"Executed {len(parameters)} operations off {operation!r}.")
+        return cursor
 
     @sync_compatible
     async def fetch_one(
@@ -132,40 +260,6 @@ class DuckConnector(DatabaseBlock):
             return result
 
     @sync_compatible
-    async def execute(
-        self,
-        operation: str,
-        parameters: Optional[Iterable[Any]] = [],
-    ) -> DuckDBPyConnection:
-        """
-        Execute an operation against the database.
-        Args:
-            operation: The SQL operation to execute.
-            parameters: The parameters to pass to the operation.
-        """
-        with self._connection.cursor() as cursor:
-            cursor = await run_sync_in_worker_thread(
-                cursor.execute, operation, parameters
-            )
-            self.logger.info(f"Executed the operation, {operation!r}.")
-            return cursor
-
-    @sync_compatible
-    async def execute_many(
-        self,
-        operation: str,
-        parameters: Iterable[Iterable[Any]] = [],
-    ) -> DuckDBPyConnection:
-        """
-        Execute operations with using prepared statements.
-        """
-        with self._connection.cursor() as cursor:
-            await run_sync_in_worker_thread(cursor.executemany, operation, parameters)
-            self.logger.info(
-                f"Executed {len(parameters)} operations off {operation!r}."
-            )
-
-    @sync_compatible
     async def fetch_numpy(
         self,
         operation: str,
@@ -188,6 +282,7 @@ class DuckConnector(DatabaseBlock):
         self,
         operation: str,
         parameters: Optional[Dict[str, Any]] = [],
+        date_as_object: bool = False,
     ) -> Any:
         """
         Fetch all results of the query from the database as a dataframe.
@@ -196,7 +291,9 @@ class DuckConnector(DatabaseBlock):
             parameters: The parameters to pass to the operation.
         """
         with self._connection.cursor() as cursor:
-            await run_sync_in_worker_thread(cursor.execute, operation, parameters)
+            await run_sync_in_worker_thread(
+                cursor.execute, operation, parameters, date_as_object
+            )
             self.logger.debug("Preparing to fetch all rows.")
             result = await run_sync_in_worker_thread(cursor.df)
             return result
@@ -249,6 +346,61 @@ class DuckConnector(DatabaseBlock):
             )
             self.logger.info(f"Created function {name!r}.")
 
+    @sync_compatible
+    async def from_csv_auto(
+        self,
+        file_name: str,
+    ) -> DuckDBPyRelation:
+        """
+        Create a table from a CSV file.
+        Args:
+            file_name: The name of the CSV file.
+        """
+        with self._connection.cursor() as cursor:
+            return await run_sync_in_worker_thread(cursor.from_csv_auto, file_name)
+
+    @sync_compatible
+    async def from_df(
+        self,
+        df: pandas.DataFrame,
+        table_name: Optional[str] = None,
+    ) -> DuckDBPyRelation:
+        """
+        Create a table from a Pandas DataFrame.
+        Args:
+            df: The Pandas DataFrame.
+            table_name: The name of the table.
+        """
+        print("from_df", df)
+        cursor = self._connection.cursor()
+        table = await run_sync_in_worker_thread(cursor.from_df, df)
+        if table_name:
+            await run_sync_in_worker_thread(cursor.register, table_name, table)
+        return cursor
+
+    @sync_compatible
+    async def from_arrow(self, arrow_object) -> DuckDBPyRelation:
+        """
+        Create a table from an Arrow object.
+        Args:
+            arrow_object: The Arrow object.
+        """
+        with self._connection.cursor() as cursor:
+            return await run_sync_in_worker_thread(cursor.from_arrow, arrow_object)
+
+    @sync_compatible
+    async def from_parquet(
+        self,
+        file_name: str,
+    ) -> DuckDBPyRelation:
+        """
+        Create a table from a Parquet file.
+        Args:
+            file_name: The name of the Parquet file.
+        """
+        with self._connection.cursor() as cursor:
+            return await run_sync_in_worker_thread(cursor.from_parquet, file_name)
+
     def remove_function(self, name: str) -> None:
         """
         Remove a function from the database.
@@ -256,6 +408,15 @@ class DuckConnector(DatabaseBlock):
             name: string representing the unique name of the UDF within the catalog.
         """
         self._connection.remove_function(name)
+
+    def set_debug(self, debug: bool) -> None:
+        """
+        Set the debug mode of the connector.
+        Args:
+            debug: Whether to enable debug mode.
+        """
+        self._debug = debug
+        self.logger.info(f"Set debug mode to {debug}.")
 
     def close(self):
         """
