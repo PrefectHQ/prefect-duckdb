@@ -213,6 +213,19 @@ class DuckDBConnector(DatabaseBlock):
         Args:
             operation: The SQL operation to execute.
             parameters: The parameters to pass to the operation.
+
+        Returns:
+            A tuple representing the result.
+        Examples:
+            ```python
+            from prefect_duckdb.database import DuckDBConnector
+
+            with DuckDBConnector.load("BLOCK_NAME") as conn:
+                conn.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
+                conn.execute("INSERT INTO test_table VALUES (1, 'one')")
+                result = conn.fetch_one("SELECT * FROM test_table")
+                print(result)
+            ```
         """
         with self._connection.cursor() as cursor:
             await run_sync_in_worker_thread(cursor.execute, operation, parameters)
@@ -233,6 +246,21 @@ class DuckDBConnector(DatabaseBlock):
             operation: The SQL operation to execute.
             parameters: The parameters to pass to the operation.
             size: The number of rows to fetch.
+        Returns:
+            A list of tuples representing the results.
+        Examples:
+            ```python
+            from prefect_duckdb.database import DuckDBConnector
+
+            with DuckDBConnector.load("BLOCK_NAME") as conn:
+                conn.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
+                conn.execute_many(
+                    "INSERT INTO test_table VALUES (?, ?)",
+                    parameters=[[1, "one"], [2, "two"], [3, "three"]]
+                )
+                result = conn.fetch_many("SELECT * FROM test_table", size=2)
+                print(result)
+            ```
         """
         with self._connection.cursor() as cursor:
             await run_sync_in_worker_thread(cursor.execute, operation, parameters)
@@ -252,6 +280,18 @@ class DuckDBConnector(DatabaseBlock):
         Args:
             operation: The SQL operation to execute.
             parameters: The parameters to pass to the operation.
+        Returns:
+            A list of tuples representing the results.
+        Examples:
+            ```python
+            from prefect_duckdb.database import DuckDBConnector
+
+            with DuckDBConnector.load("BLOCK_NAME") as conn:
+                conn.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
+                conn.execute("INSERT INTO test_table VALUES (1, 'one')")
+                result = conn.fetch_all("SELECT * FROM test_table")
+                print(result)
+            ```
         """
         with self._connection.cursor() as cursor:
             await run_sync_in_worker_thread(cursor.execute, operation, parameters)
@@ -264,12 +304,24 @@ class DuckDBConnector(DatabaseBlock):
         self,
         operation: str,
         parameters: Optional[Dict[str, Any]] = [],
-    ) -> Any:
+    ) -> dict:
         """
         Fetch all results of the query from the database as a numpy array.
         Args:
             operation: The SQL operation to execute.
             parameters: The parameters to pass to the operation.
+        Returns:
+            A dictionary representing a numpy array.
+        Examples:
+            ```python
+            from prefect_duckdb.database import DuckDBConnector
+
+            with DuckDBConnector.load("BLOCK_NAME") as conn:
+                conn.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
+                conn.execute("INSERT INTO test_table VALUES (1, 'one')")
+                result = conn.fetch_numpy("SELECT * FROM test_table")
+                print(result)
+            ```
         """
         with self._connection.cursor() as cursor:
             await run_sync_in_worker_thread(cursor.execute, operation, parameters)
@@ -283,12 +335,24 @@ class DuckDBConnector(DatabaseBlock):
         operation: str,
         parameters: Optional[Dict[str, Any]] = [],
         date_as_object: bool = False,
-    ) -> Any:
+    ) -> pandas.DataFrame:
         """
         Fetch all results of the query from the database as a dataframe.
         Args:
             operation: The SQL operation to execute.
             parameters: The parameters to pass to the operation.
+        Returns:
+            A pandas dataframe.
+        Examples:
+            ```python
+            from prefect_duckdb.database import DuckDBConnector
+
+            with DuckDBConnector.load("BLOCK_NAME") as conn:
+                conn.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
+                conn.execute("INSERT INTO test_table VALUES (1, 'one')")
+                result = conn.fetch_df("SELECT * FROM test_table")
+                print(result)
+            ```
         """
         with self._connection.cursor() as cursor:
             await run_sync_in_worker_thread(
@@ -309,6 +373,18 @@ class DuckDBConnector(DatabaseBlock):
         Args:
             operation: The SQL operation to execute.
             parameters: The parameters to pass to the operation.
+        Returns:
+            An Arrow table.
+        Examples:
+            ```python
+            from prefect_duckdb.database import DuckDBConnector
+
+            with DuckDBConnector.load("BLOCK_NAME") as conn:
+                conn.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
+                conn.execute("INSERT INTO test_table VALUES (1, 'one')")
+                result = conn.fetch_arrow("SELECT * FROM test_table")
+                print(result)
+            ```
         """
         with self._connection.cursor() as cursor:
             await run_sync_in_worker_thread(cursor.execute, operation, parameters)
@@ -371,7 +447,6 @@ class DuckDBConnector(DatabaseBlock):
             df: The Pandas DataFrame.
             table_name: The name of the table.
         """
-        print("from_df", df)
         cursor = self._connection.cursor()
         table = await run_sync_in_worker_thread(cursor.from_df, df)
         if table_name:
