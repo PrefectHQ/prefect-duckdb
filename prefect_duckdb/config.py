@@ -15,7 +15,7 @@ class DuckDBConfig(Block):
     """A block for configuring DuckDB."""
 
     _block_type_name = "DuckDB configuation"
-    _logo_url = "https://placeholder.com"  # noqa
+    _logo_url = "https://duckdb.org/images/logo-dl/DuckDB_Logo.png"  # noqa
     _documentation_url = "https://placeholder.com"  # noqa
 
     calendar: Optional[str] = Field(
@@ -213,6 +213,7 @@ class DuckDBConfig(Block):
         None,
         description=("The username to use. Ignored for legacy compatibility."),
     )
+
     # TODO: these are possibly attached to extensions
     # enable_server_cert_verification: Optional[bool] = Field(
     #     False,

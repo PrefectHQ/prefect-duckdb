@@ -89,7 +89,6 @@ class TestDuckDBConnector:
             "SELECT name FROM students JOIN exams USING (sid) WHERE name LIKE 'Ma%'",
             debug=True,
         )
-        print(caplog.records[5])
         assert qplan == caplog.records[5].msg
 
     def test_fetch_one(self, duck_connector: DuckDBConnector):

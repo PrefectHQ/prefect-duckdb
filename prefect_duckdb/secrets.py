@@ -1,52 +1,63 @@
 """This module contains the DuckDB secrets block."""
-from typing import Literal
+from typing import Literal, Optional
 
 from duckdb import DuckDBPyConnection
-from prefect.blocks import CredentialsBlock
-from pydantic import Field
+from prefect.blocks.core import Block
+from pydantic import VERSION as PYDANTIC_VERSION
+
+if PYDANTIC_VERSION.startswith("2."):
+    from pydantic.v1 import Field, SecretStr
+else:
+    from pydantic import Field, SecretStr
 
 
-class DuckSecrets(CredentialsBlock):
+class DuckDBSecrets(Block):
     """A block for storing DuckDB secrets."""
 
     _block_type_name = "DuckDB Secret"
-    _logo_url = ""  # noqa
-    _documentation_url = ""  # noqa
-
-    name = Field(
+    _logo_url = "https://duckdb.org/images/logo-dl/DuckDB_Logo.png"  # noqa
+    _documentation_url = "https://duckdb.org/images/logo-dl/DuckDB_Logo.png"  # noqa
+    name: str = Field(
         ...,
         description="The name of the secret",
     )
-    type: Literal["S3", "GCS", "R2", "AZURE"] = Field(
+    secret_type: Literal["S3", "GCS", "R2", "AZURE"] = Field(
         "S3",
         description="The type of the secret",
     )
-    key_id = Field(
-        ...,
+    key_id: Optional[str] = Field(
+        None,
         description="The key ID of the secret",
     )
-    secret = Field(..., description="The secret")
-    region = Field(
-        ...,
+    secret: Optional[SecretStr] = Field(None, description="The secret")
+    region: Optional[str] = Field(
+        None,
         description="The region of the secret",
     )
-    scope = Field(
-        ...,
+    scope: Optional[str] = Field(
+        None,
         description="The scope of the secret",
     )
 
     def create_secret(
-        connection: DuckDBPyConnection, name, type, key_id, secret, region, scope
+        self,
+        connection: DuckDBPyConnection,
     ):
         """Create a secret in DuckDB."""
-        return connection.execute(
-            f"""CREATE SECRET {name} \
-                TYPE {type} \
-                KEY_ID {key_id} \
-                SECRET {secret} \
-                REGION {region} \
-                SCOPE {scope}
-            """
+
+        args = []
+        if self.key_id:
+            args.append(f"KEY_ID '{self.key_id}'")
+        if self.secret:
+            args.append(f"SECRET '{self.secret}'")
+        if self.region:
+            args.append(f"REGION '{self.region}'")
+        if self.scope:
+            args.append(f"SCOPE '{self.scope}'")
+
+        argstring = ", ".join(args)
+        connection.execute(
+            f"""CREATE SECRET {self.name} ( TYPE {self.secret_type}, {argstring});"""
         )
 
     def drop_secret(connection: DuckDBPyConnection, name):
