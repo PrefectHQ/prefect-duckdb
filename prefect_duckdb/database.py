@@ -1,5 +1,6 @@
 """Module for querying against Snowflake databases."""
 
+import os
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import duckdb
@@ -9,8 +10,6 @@ from prefect import task
 from prefect.blocks.abstract import DatabaseBlock
 from prefect.utilities.asyncutils import run_sync_in_worker_thread, sync_compatible
 from pydantic import VERSION as PYDANTIC_VERSION
-
-from .config import DuckDBConfig
 
 if PYDANTIC_VERSION.startswith("2."):
     from pydantic.v1 import Field
@@ -64,8 +63,8 @@ class DuckDBConnector(DatabaseBlock):
     _documentation_url = "https://placeholder.com"  # noqa
     _description = "Perform data operations against a DuckDb database."
 
-    configuration: DuckDBConfig = Field(
-        default=..., description="Configuration to be used when creating connection."
+    configuration: Optional[dict] = Field(
+        default=None, description="Configuration to be used when creating connection."
     )
     database: str = Field(
         default=":memory:", description="The name of the default database to use."
@@ -78,7 +77,7 @@ class DuckDBConnector(DatabaseBlock):
     _debug: bool = False
 
     def get_connection(
-        self, read_only: Optional[bool] = None, config: Optional[DuckDBConfig] = None
+        self, read_only: Optional[bool] = None, config: Optional[dict] = None
     ) -> DuckDBPyConnection:
         """
         Returns an authenticated connection that can be
@@ -104,10 +103,11 @@ class DuckDBConnector(DatabaseBlock):
         if self._connection is not None:
             return self._connection
 
-        config = config or self.configuration.dict(
-            exclude_none=True, exclude={"block_type_slug"}
-        )
+        config = config or self.configuration or {}
         read_only = read_only or self.read_only
+
+        if os.environ.get("motherduck_token") and "motherduck_token" not in config:
+            config["motherduck_token"] = os.environ.get("motherduck_token")
 
         connection = duckdb.connect(
             database=self.database,
@@ -148,6 +148,7 @@ class DuckDBConnector(DatabaseBlock):
                 )
             ```
         """
+        self.get_connection()
         cursor = self._connection.cursor()
         if self._debug or debug:
             debug_operation = f"""EXPLAIN \
@@ -529,7 +530,7 @@ class DuckDBConnector(DatabaseBlock):
 
 
 @task
-async def duckdb_query(
+def duckdb_query(
     query: str,
     duckdb_connector: DuckDBConnector,
     parameters: Optional[Iterable[Any]] = [],
@@ -559,6 +560,5 @@ async def duckdb_query(
         ```
 
     """
-    duckdb_connector.get_connection()
     result = duckdb_connector.execute(query, parameters)
     return result

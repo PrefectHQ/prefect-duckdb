@@ -1,6 +1,5 @@
 import pytest
 
-from prefect_duckdb.config import DuckDBConfig
 from prefect_duckdb.database import DuckDBConnector
 from prefect_duckdb.secrets import DuckDBSecrets
 
@@ -8,9 +7,7 @@ from prefect_duckdb.secrets import DuckDBSecrets
 class TestDuckDBConfig:
     @pytest.fixture
     def duck_connector(self):
-        connector = DuckDBConnector(
-            configuration=DuckDBConfig(), read_only=False, debug=False
-        )
+        connector = DuckDBConnector(read_only=False, debug=False)
         return connector
 
     @pytest.fixture
