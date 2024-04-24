@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 import duckdb
 import pandas
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
+from prefect import task
 from prefect.blocks.abstract import DatabaseBlock
 from prefect.utilities.asyncutils import run_sync_in_worker_thread, sync_compatible
 from pydantic import VERSION as PYDANTIC_VERSION
@@ -154,7 +155,7 @@ class DuckDBConnector(DatabaseBlock):
             plan = cursor.execute(debug_operation, parameters)
             plan = plan.arrow().column("explain_value")[0]
             self.logger.info(f"""The query plan for the operation is: \n{plan}""")
-        cursor = self._connection.cursor()
+
         cursor = await run_sync_in_worker_thread(
             cursor.execute, operation, parameters, multiple_parameter_sets
         )
@@ -525,3 +526,39 @@ class DuckDBConnector(DatabaseBlock):
     def __setstate__(self, data: dict):
         """Reset connection and cursors upon loading."""
         self.__dict__.update(data)
+
+
+@task
+async def duckdb_query(
+    query: str,
+    duckdb_connector: DuckDBConnector,
+    parameters: Optional[Iterable[Any]] = [],
+) -> List[Tuple[Any]]:
+    """
+    Execute a query against a DuckDB database.
+
+    Args:
+        query: The SQL query to execute.
+        duckdb_connector: The DuckDBConnector block to use.
+        parameters: The parameters to pass to the operation.
+    Returns:
+        A list of tuples representing the results.
+    Examples:
+        ```python
+        from prefect import Flow
+        from prefect_duckdb.database import DuckDBConnector, duckdb_query
+
+        @flow
+        def duckdb_query_flow():
+            duckdb_connector = DuckDBConnector.load("BLOCK_NAME")
+
+            result = duckdb_query("SELECT * FROM test_table", duckdb_connector)
+            print(result)
+
+        duckdb_query_flow()
+        ```
+
+    """
+    duckdb_connector.get_connection()
+    result = duckdb_connector.execute(query, parameters)
+    return result

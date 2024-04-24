@@ -1,8 +1,9 @@
 import pytest
 from duckdb import DuckDBPyConnection
+from prefect import flow
 
 from prefect_duckdb.config import DuckDBConfig
-from prefect_duckdb.database import DuckDBConnector
+from prefect_duckdb.database import DuckDBConnector, duckdb_query
 
 qplan = """The query plan for the operation is: 
 ┌───────────────────────────┐                             
@@ -41,7 +42,7 @@ qplan = """The query plan for the operation is:
                              │ Filters: name>=Ma AND name│
                              │  <Mb AND name IS NOT NULL │
                              │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │
-                             │           EC: 1           │a
+                             │           EC: 1           │
                              └───────────────────────────┘                             
 """  # noqa: W291
 
@@ -167,3 +168,27 @@ class TestDuckDBConnector:
         duck_connector.create_function("add_one", add_one)
         result = duck_connector.fetch_one("SELECT add_one(1)")[0]
         assert result == 2
+
+    def test_duckdb_query(self, duck_connector):
+        @flow
+        def test_flow():
+
+            create_table = duckdb_query(
+                "CREATE TABLE students (name VARCHAR, sid INTEGER);",
+                duck_connector,
+            )
+            populate_table = duckdb_query(
+                "INSERT INTO students VALUES ('Mark', 1), ('Joe', 2), ('Matthew', 3);",
+                duck_connector,
+                wait_for=create_table,
+            )
+
+            result = duckdb_query(
+                "SELECT * FROM test_table",
+                duck_connector,
+                wait_for=populate_table,
+            )
+            return result
+
+        result = test_flow()
+        assert result.fetchall() == [(1, "one")]
