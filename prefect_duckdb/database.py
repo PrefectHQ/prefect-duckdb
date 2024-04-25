@@ -1,7 +1,7 @@
 """Module for querying against Snowflake databases."""
 
 import os
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Literal, Optional, Tuple
 
 import duckdb
 import pandas
@@ -423,6 +423,50 @@ class DuckDBConnector(DatabaseBlock):
                 side_effects=side_effects,
             )
             self.logger.info(f"Created function {name!r}.")
+
+    def create_secret(
+        self,
+        name: str,
+        secret_type: Literal["S3", "AZURE"],
+        key_id: Optional[str] = None,
+        secret: Optional[str] = None,
+        region: Optional[str] = None,
+        scope: Optional[str] = None,
+    ):
+        """Create a secret in DuckDB.
+        Example:
+        ```python
+        from prefect_duckdb.database import DuckDBConnector
+        from prefect_aws import AwsCredentials
+
+        aws_credentials_block = AwsCredentials.load("BLOCK_NAME")
+        connector = DuckDBConnector().load("BLOCK_NAME")
+        connector.get_connection()
+        connector.create_secret(
+            name="test_secret",
+            secret_type="S3",
+            key_id=aws_credentials_block.access_key,
+            secret=aws_credentials_block.secret_access_key,
+            region=aws_credentials_block.region_name
+        )
+        ```
+        connector.execute("SELECT count(*) FROM 's3://<bucket>/<file>';")
+
+        """
+        args = []
+        if key_id:
+            args.append(f"KEY_ID '{key_id}'")
+        if secret:
+            args.append(f"SECRET '{secret}'")
+        if region:
+            args.append(f"REGION '{region}'")
+        if scope:
+            args.append(f"SCOPE '{scope}'")
+
+        argstring = ", ".join(args)
+        self._connection.execute(
+            f"""CREATE SECRET {name} ( TYPE {secret_type}, {argstring});"""
+        )
 
     @sync_compatible
     async def from_csv_auto(
