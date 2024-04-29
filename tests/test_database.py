@@ -1,49 +1,63 @@
+import re
+
 import pytest
 from duckdb import DuckDBPyConnection
 from prefect import flow
+from prefect._internal.pydantic import HAS_PYDANTIC_V2
+from prefect.server import schemas
+from prefect.server.schemas.actions import ArtifactCreate
 
 from prefect_duckdb.database import DuckDBConnector, duckdb_query
 
-qplan = """The query plan for the operation is: 
-┌───────────────────────────┐                             
-│         PROJECTION        │                             
-│   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │                             
-│            name           │                             
-└─────────────┬─────────────┘                                                          
-┌─────────────┴─────────────┐                             
-│         HASH_JOIN         │                             
-│   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │                             
-│           INNER           │                             
-│         sid = sid         │                             
-│   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   ├──────────────┐              
-│        Build Min: 1       │              │              
-│        Build Max: 3       │              │              
-│   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │              │              
-│           EC: 1           │              │              
-└─────────────┬─────────────┘              │                                           
-┌─────────────┴─────────────┐┌─────────────┴─────────────┐
-│         SEQ_SCAN          ││           FILTER          │
-│   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   ││   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │
-│           exams           ││     prefix(name, 'Ma')    │
-│   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   ││   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │
-│            sid            ││           EC: 1           │
-│   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   ││                           │
-│           EC: 3           ││                           │
-└───────────────────────────┘└─────────────┬─────────────┘                             
-                             ┌─────────────┴─────────────┐
-                             │         SEQ_SCAN          │
-                             │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │
-                             │          students         │
-                             │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │
-                             │            sid            │
-                             │            name           │
-                             │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │
-                             │ Filters: name>=Ma AND name│
-                             │  <Mb AND name IS NOT NULL │
-                             │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │
-                             │           EC: 1           │
-                             └───────────────────────────┘                             
-"""  # noqa: W291
+if HAS_PYDANTIC_V2:
+    import pydantic.v1 as pydantic
+else:
+    import pydantic
+
+qplan = """
+```
+| Physical_Plan                                                                           |
+|:----------------------------------------------------------------------------------------|
+| ┌───────────────────────────┐                                                           |
+| │         PROJECTION        │                                                           |
+| │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │                                                           |
+| │            name           │                                                           |
+| └─────────────┬─────────────┘                                                           |
+| ┌─────────────┴─────────────┐                                                           |
+| │         HASH_JOIN         │                                                           |
+| │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │                                                           |
+| │           INNER           │                                                           |
+| │         sid = sid         │                                                           |
+| │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   ├──────────────┐                                            |
+| │        Build Min: 1       │              │                                            |
+| │        Build Max: 3       │              │                                            |
+| │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │              │                                            |
+| │           EC: 1           │              │                                            |
+| └─────────────┬─────────────┘              │                                            |
+| ┌─────────────┴─────────────┐┌─────────────┴─────────────┐                              |
+| │         SEQ_SCAN          ││           FILTER          │                              |
+| │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   ││   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │                              |
+| │           exams           ││     prefix(name, 'Ma')    │                              |
+| │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   ││   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │                              |
+| │            sid            ││           EC: 1           │                              |
+| │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   ││                           │                              |
+| │           EC: 3           ││                           │                              |
+| └───────────────────────────┘└─────────────┬─────────────┘                              |
+|                              ┌─────────────┴─────────────┐                              |
+|                              │         SEQ_SCAN          │                              |
+|                              │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │                              |
+|                              │          students         │                              |
+|                              │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │                              |
+|                              │            sid            │                              |
+|                              │            name           │                              |
+|                              │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │                              |
+|                              │ Filters: name>=Ma AND name│                              |
+|                              │  <Mb AND name IS NOT NULL │                              |
+|                              │   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │                              |
+|                              │           EC: 1           │                              |
+|                              └───────────────────────────┘                              |
+```
+"""  # noqa: W291 E501
 
 
 class TestDuckDBConnector:
@@ -55,6 +69,14 @@ class TestDuckDBConnector:
     @pytest.fixture
     def duck_connection(self, duck_connector):
         return duck_connector.get_connection()
+
+    @pytest.fixture
+    async def artifact(self):
+        yield ArtifactCreate(
+            key="voltaic",
+            data=1,
+            description="# This is a markdown description title",
+        )
 
     def test_block_initialization(self, duck_connector):
         assert duck_connector._connection is None
@@ -69,25 +91,46 @@ class TestDuckDBConnector:
         cursor = duck_connector.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
         assert type(cursor) is DuckDBPyConnection
 
-    def test_execute_debug(self, duck_connector: DuckDBConnector, caplog):
-        duck_connector.get_connection()
-        duck_connector.execute("CREATE TABLE students (name VARCHAR, sid INTEGER);")
-        duck_connector.execute(
-            "CREATE TABLE exams (eid INTEGER, subject VARCHAR, sid INTEGER);"
-        )
-        duck_connector.execute(
-            "INSERT INTO students VALUES ('Mark', 1), ('Joe', 2), ('Matthew', 3);"
-        )
-        duck_connector.execute(
-            "INSERT INTO exams VALUES \n"
-            "(10, 'Physics', 1), (20, 'Chemistry', 2), (30, 'Literature', 3);"
-        )
+    async def test_execute_debug(
+        self, duck_connector: DuckDBConnector, caplog, client, artifact
+    ):
+        with duck_connector.get_connection():
 
-        duck_connector.execute(
-            "SELECT name FROM students JOIN exams USING (sid) WHERE name LIKE 'Ma%'",
-            debug=True,
-        )
-        assert qplan == caplog.records[5].msg
+            await duck_connector.execute(
+                "CREATE TABLE students (name VARCHAR, sid INTEGER);"
+            )
+            await duck_connector.execute(
+                "CREATE TABLE exams (eid INTEGER, subject VARCHAR, sid INTEGER);"
+            )
+            await duck_connector.execute(
+                "INSERT INTO students VALUES ('Mark', 1), ('Joe', 2), ('Matthew', 3);"
+            )
+            await duck_connector.execute(
+                "INSERT INTO exams VALUES \n"
+                "(10, 'Physics', 1), (20, 'Chemistry', 2), (30, 'Literature', 3);"
+            )
+
+            operation = (
+                "SELECT name FROM students JOIN exams USING (sid) WHERE name LIKE 'Ma%'"
+            )
+            await duck_connector.execute(
+                operation,
+                debug=True,
+            )
+
+            artifact_key = (
+                re.sub(
+                    "[^A-Za-z0-9 ]+",
+                    "",
+                    operation,
+                )
+                .lower()
+                .replace(" ", "-")
+            )
+            response = await client.get(f"/artifacts/{artifact_key}/latest")
+            result = pydantic.parse_obj_as(schemas.core.Artifact, response.json())
+            assert result.data == qplan
+            assert qplan == caplog.records[5].msg
 
     def test_fetch_one(self, duck_connector: DuckDBConnector):
         duck_connector.get_connection()

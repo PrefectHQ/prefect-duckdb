@@ -1,4 +1,7 @@
+import httpx
 import pytest
+from httpx import ASGITransport
+from prefect.server.api.server import create_app
 from prefect.testing.utilities import prefect_test_harness
 
 
@@ -20,3 +23,20 @@ def reset_object_registry():
 
     with PrefectObjectRegistry():
         yield
+
+
+@pytest.fixture()
+def app():
+    return create_app(ephemeral=True)
+
+
+@pytest.fixture
+async def client(app):
+    """
+    Yield a test client for testing the api
+    """
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="https://test/api"
+    ) as async_client:
+        yield async_client

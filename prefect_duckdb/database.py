@@ -1,12 +1,14 @@
 """Module for querying against Snowflake databases."""
 
 import os
+import re
 from typing import Any, Callable, Dict, Iterable, List, Literal, Optional, Tuple
 
 import duckdb
 import pandas
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
-from prefect import task
+from prefect import get_client, task
+from prefect.artifacts import create_markdown_artifact
 from prefect.blocks.abstract import DatabaseBlock
 from prefect.utilities.asyncutils import run_sync_in_worker_thread, sync_compatible
 from pydantic import VERSION as PYDANTIC_VERSION
@@ -151,11 +153,7 @@ class DuckDBConnector(DatabaseBlock):
         self.get_connection()
         cursor = self._connection.cursor()
         if self._debug or debug:
-            debug_operation = f"""EXPLAIN \
-                            {operation}"""
-            plan = cursor.execute(debug_operation, parameters)
-            plan = plan.arrow().column("explain_value")[0]
-            self.logger.info(f"""The query plan for the operation is: \n{plan}""")
+            await self.create_query_plan_markdown(operation, parameters, cursor)
 
         cursor = await run_sync_in_worker_thread(
             cursor.execute, operation, parameters, multiple_parameter_sets
@@ -538,6 +536,32 @@ class DuckDBConnector(DatabaseBlock):
         """
         self._debug = debug
         self.logger.info(f"Set debug mode to {debug}.")
+
+    async def create_query_plan_markdown(
+        self, operation: str, parameters: Optional[list], cursor: DuckDBPyConnection
+    ):
+        debug_operation = f"""EXPLAIN \
+                            {operation}"""
+        plan = cursor.execute(debug_operation, parameters)
+        plan = plan.df()
+        plan = plan.rename(columns={"explain_value": "Physical_Plan"})[
+            "Physical_Plan"
+        ].to_markdown(index=False)
+
+        markdown = f"""
+```
+{plan}
+```
+"""
+        artifact_key = re.sub("[^A-Za-z0-9 ]+", "", operation).lower().replace(" ", "-")
+
+        self.logger.info(markdown)
+        async with get_client():
+            return await create_markdown_artifact(
+                key=artifact_key,
+                markdown=markdown,
+                description="The query plan for the operation.",
+            )
 
     def close(self):
         """
