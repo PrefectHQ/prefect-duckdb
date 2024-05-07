@@ -25,9 +25,11 @@ from upath import UPath as Path
 
 from prefect_duckdb import DuckDBConnector
 
-LOCAL = os.environ.get("EXECUTION_ENVIRONMENT", "local") == "local"
+LOCAL = os.environ.get("EXECUTION_ENVIRONMENT", "local") == "remote"
 
-ROOT = Path("./data-lake").resolve() if LOCAL else Path("data-lake")
+ROOT = (
+    Path("./data-lake").resolve() if LOCAL else Path("s3://jean-dev-bucket/data-lake")
+)
 RAW_DIR = Path("./data-lake").resolve() / "raw"  # Input JSON files
 PROCESSED_DIR = ROOT / "processed"  # Processed Parquet files
 RESULTS_DIR = ROOT / "results"  # Reduced/aggrgated results
@@ -221,7 +223,7 @@ def generate_data(scale: int = 1, path: Path = RAW_DIR):
                 f"""
                     COPY (SELECT * FROM {table})
                     TO '{outfile}'
-                     """
+                """
             )
 
             print(f"Exported table {table} to {outfile}")
@@ -235,11 +237,19 @@ def copy_to_parquet(file: Path, datadir: Path = PROCESSED_DIR):
         file (Path): Path to the JSON file to convert to Parquet
     """
     duck_connector = DuckDBConnector()
+    if not LOCAL:
+        aws_credentials = AwsCredentials().load("s3-service")
+        duck_connector.create_secret(
+            "secret1",
+            "S3",
+            aws_credentials.aws_access_key_id,
+            aws_credentials.aws_secret_access_key,
+            aws_credentials.region_name,
+        )
     with duck_connector.get_connection() as conn:
         partition = f"{datetime.datetime.now().isoformat().split('.')[0]}"
         outfile = datadir / file.parent.name / partition
-        if LOCAL:
-            fs.makedirs(outfile, exist_ok=True)
+        fs.makedirs(outfile, exist_ok=True)
         query = f"""
         COPY
         (SELECT * FROM read_json_auto(
@@ -270,11 +280,19 @@ def transform_sql(segment="BUILDING", datadir=PROCESSED_DIR):
         segment (str): Customer segment to filter by
     """
     duck_connector = DuckDBConnector()
+    if not LOCAL:
+        aws_credentials = AwsCredentials().load("s3-service")
+        duck_connector.create_secret(
+            "secret1",
+            "S3",
+            aws_credentials.aws_access_key_id,
+            aws_credentials.aws_secret_access_key,
+            aws_credentials.region_name,
+        )
     with duck_connector.get_connection() as conn:
         lineitem_path = str(datadir / "lineitem/*/*.parquet")
         orders_path = str(datadir / "orders/*/*.parquet")
         customer_path = str(datadir / "customer/*/*.parquet")
-
         conn.execute(
             f"CREATE TABLE lineitem AS SELECT * FROM read_parquet('{lineitem_path}')"
         )
@@ -286,6 +304,7 @@ def transform_sql(segment="BUILDING", datadir=PROCESSED_DIR):
         )
 
         date = pd.Timestamp.now()
+
         query = f"""
             SELECT
                 l_orderkey AS order_key,
@@ -297,7 +316,7 @@ def transform_sql(segment="BUILDING", datadir=PROCESSED_DIR):
                 orders,
                 lineitem
             WHERE
-                c_mktsegment = '{segment}'
+                c_mktsegment = '{segment.upper()}'
                 AND c_custkey = o_custkey
                 AND l_orderkey = o_orderkey
                 AND o_orderdate <  '{date}'
@@ -312,6 +331,7 @@ def transform_sql(segment="BUILDING", datadir=PROCESSED_DIR):
             LIMIT 50;
             """
         result = conn.sql(query)
+        print(result.show())
         result.create(segment)
         outfile = RESULTS_DIR / f"{segment}.snappy.parquet"
         if LOCAL:
@@ -382,22 +402,9 @@ def data_lake():
     Data is then exported to parquet files.
     """
     segments = ["automobile", "building", "furniture", "machinery", "household"]
-    local = LOCAL
-    print(local)
-    duckdb_connector = DuckDBConnector()
-    with duckdb_connector.get_connection() as conn:
-        if not local:
-            aws_credentials = AwsCredentials().load("s3-service")
-            conn.sql(
-                f"""
-            SET s3_access_key_id = 'f{aws_credentials.aws_access_key_id}';
-            SET s3_secret_access_key = 'f{aws_credentials.aws_secret_access_key}';
-            SET s3_region = 'f{aws_credentials.region_name}';
-            """
-            )
-        generate_data(1)
-        copy_to_parquet.map(list(RAW_DIR.rglob("*.json")))
-        transform_sql.map(segment=segments)
+    # generate_data(1)
+    # copy_to_parquet.map(list(RAW_DIR.rglob("*.json")))
+    transform_sql.map(segment=segments)
 
 
 if __name__ == "__main__":

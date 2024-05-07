@@ -14,9 +14,9 @@ from prefect.utilities.asyncutils import run_sync_in_worker_thread, sync_compati
 from pydantic import VERSION as PYDANTIC_VERSION
 
 if PYDANTIC_VERSION.startswith("2."):
-    from pydantic.v1 import Field
+    from pydantic.v1 import Field, SecretStr
 else:
-    from pydantic import Field
+    from pydantic import Field, SecretStr
 
 
 class DuckDBConnector(DatabaseBlock):
@@ -451,7 +451,12 @@ class DuckDBConnector(DatabaseBlock):
         connector.execute("SELECT count(*) FROM 's3://<bucket>/<file>';")
 
         """
+        if not self._connection:
+            self.get_connection()
+
         args = []
+        if type(secret) == SecretStr:
+            secret = secret.get_secret_value()
         if key_id:
             args.append(f"KEY_ID '{key_id}'")
         if secret:
