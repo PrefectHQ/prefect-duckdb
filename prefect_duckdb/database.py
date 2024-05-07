@@ -213,14 +213,14 @@ class DuckDBConnector(DatabaseBlock):
 
         Examples:
             ```python
-            from prefect_duckdb.database import DuckDBConnector
+                from prefect_duckdb.database import DuckDBConnector
 
-            with DuckDBConnector.load("BLOCK_NAME") as conn:
-                conn.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
-                conn.execute_many(
-                    "INSERT INTO test_table VALUES (?, ?)",
-                    parameters=[[1, "one"], [2, "two"], [3, "three"]]
-                )
+                with DuckDBConnector.load("BLOCK_NAME") as conn:
+                    conn.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
+                    conn.execute_many(
+                        "INSERT INTO test_table VALUES (?, ?)",
+                        parameters=[[1, "one"], [2, "two"], [3, "three"]]
+                    )
             ```
         """
         cursor = self._connection.cursor()
@@ -249,6 +249,7 @@ class DuckDBConnector(DatabaseBlock):
 
         Returns:
             A tuple representing the result.
+
         Examples:
             ```python
             from prefect_duckdb.database import DuckDBConnector
@@ -310,11 +311,14 @@ class DuckDBConnector(DatabaseBlock):
     ) -> List[Tuple[Any]]:
         """
         Fetch all results from the database.
+
         Args:
             operation: The SQL operation to execute.
             parameters: The parameters to pass to the operation.
+
         Returns:
             A list of tuples representing the results.
+
         Examples:
             ```python
             from prefect_duckdb.database import DuckDBConnector
@@ -403,11 +407,14 @@ class DuckDBConnector(DatabaseBlock):
     ) -> Any:
         """
         Fetch all results of the query from the database as an Arrow table.
+
         Args:
             operation: The SQL operation to execute.
             parameters: The parameters to pass to the operation.
+
         Returns:
             An Arrow table.
+
         Examples:
             ```python
             from prefect_duckdb.database import DuckDBConnector
@@ -436,6 +443,7 @@ class DuckDBConnector(DatabaseBlock):
     ) -> None:
         """
         Create a function in the database.
+
         Args:
             name: string representing the unique name of the UDF within the catalog.
             func: The Python function you wish to register as a UDF.
@@ -465,24 +473,32 @@ class DuckDBConnector(DatabaseBlock):
         scope: Optional[str] = None,
     ):
         """Create a secret in DuckDB.
-        Example:
-        ```python
-        from prefect_duckdb.database import DuckDBConnector
-        from prefect_aws import AwsCredentials
 
-        aws_credentials_block = AwsCredentials.load("BLOCK_NAME")
-        connector = DuckDBConnector().load("BLOCK_NAME")
-        connector.get_connection()
-        connector.create_secret(
-            name="test_secret",
-            secret_type="S3",
-            key_id=aws_credentials_block.access_key,
-            secret=aws_credentials_block.secret_access_key,
-            region=aws_credentials_block.region_name
-        )
-        ```
-        connector.execute("SELECT count(*) FROM 's3://<bucket>/<file>';")
+        Args:
+            name: The name of the secret.
+            secret_type: The type of secret.
+            key_id: The key ID.
+            secret: The secret.
+            region: The region.
+            scope: The scope.
 
+        Examples:
+            ```python
+            from prefect_duckdb.database import DuckDBConnector
+            from prefect_aws import AwsCredentials
+
+            aws_credentials_block = AwsCredentials.load("BLOCK_NAME")
+            connector = DuckDBConnector().load("BLOCK_NAME")
+            connector.get_connection()
+            connector.create_secret(
+                name="test_secret",
+                secret_type="S3",
+                key_id=aws_credentials_block.access_key,
+                secret=aws_credentials_block.secret_access_key,
+                region=aws_credentials_block.region_name
+            )
+            connector.execute("SELECT count(*) FROM 's3://<bucket>/<file>';")
+            ```
         """
         if not self._connection:
             self.get_connection()
@@ -511,6 +527,7 @@ class DuckDBConnector(DatabaseBlock):
     ) -> DuckDBPyRelation:
         """
         Create a table from a CSV file.
+
         Args:
             file_name: The name of the CSV file.
         """
@@ -525,6 +542,7 @@ class DuckDBConnector(DatabaseBlock):
     ) -> DuckDBPyRelation:
         """
         Create a table from a Pandas DataFrame.
+
         Args:
             df: The Pandas DataFrame.
             table_name: The name of the table.
@@ -539,6 +557,7 @@ class DuckDBConnector(DatabaseBlock):
     async def from_arrow(self, arrow_object) -> DuckDBPyRelation:
         """
         Create a table from an Arrow object.
+
         Args:
             arrow_object: The Arrow object.
         """
@@ -552,6 +571,7 @@ class DuckDBConnector(DatabaseBlock):
     ) -> DuckDBPyRelation:
         """
         Create a table from a Parquet file.
+
         Args:
             file_name: The name of the Parquet file.
         """
@@ -561,6 +581,7 @@ class DuckDBConnector(DatabaseBlock):
     def remove_function(self, name: str) -> None:
         """
         Remove a function from the database.
+
         Args:
             name: string representing the unique name of the UDF within the catalog.
         """
@@ -569,6 +590,7 @@ class DuckDBConnector(DatabaseBlock):
     def set_debug(self, debug: bool) -> None:
         """
         Set the debug mode of the connector.
+
         Args:
             debug: Whether to enable debug mode.
         """
