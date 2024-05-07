@@ -153,11 +153,44 @@ class DuckDBConnector(DatabaseBlock):
         self.get_connection()
         cursor = self._connection.cursor()
         if self._debug or debug:
-            await self.create_query_plan_markdown(operation, parameters, cursor)
+            await self.create_query_plan_markdown(operation, cursor, parameters)
 
         cursor = await run_sync_in_worker_thread(
             cursor.execute, operation, parameters, multiple_parameter_sets
         )
+        self.logger.info(f"Executed the operation, {operation!r}.")
+        return cursor
+
+    @sync_compatible
+    async def sql(
+        self,
+        operation: str,
+        debug: Optional[bool] = False,
+    ) -> DuckDBPyRelation:
+        """
+        Execute the given SQL query, optionally using prepared statements
+        with parameters set.
+
+        Args:
+            operation: The SQL operation to execute.
+            debug: Whether to run the operation in debug mode.
+                   Sends the query plan to the logger.
+
+        Examples:
+            ```python
+            from prefect_duckdb.database import DuckDBConnector
+
+            with DuckDBConnector.load("BLOCK_NAME") as conn:
+                conn.sql(
+                    "CREATE TABLE test_table (i INTEGER, j STRING)"
+                )
+            ```
+        """
+        self.get_connection()
+        cursor = self._connection.cursor()
+        if self._debug or debug:
+            await self.create_query_plan_markdown(operation=operation, cursor=cursor)
+        cursor = await run_sync_in_worker_thread(cursor.sql, operation)
         self.logger.info(f"Executed the operation, {operation!r}.")
         return cursor
 
@@ -543,7 +576,10 @@ class DuckDBConnector(DatabaseBlock):
         self.logger.info(f"Set debug mode to {debug}.")
 
     async def create_query_plan_markdown(
-        self, operation: str, parameters: Optional[list], cursor: DuckDBPyConnection
+        self,
+        operation: str,
+        cursor: DuckDBPyConnection,
+        parameters: Optional[list] = [],
     ):
         debug_operation = f"""EXPLAIN \
                             {operation}"""

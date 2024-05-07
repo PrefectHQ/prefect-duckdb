@@ -26,7 +26,7 @@ from upath import UPath as Path
 from prefect_duckdb import DuckDBConnector
 
 LOCAL = os.environ.get("EXECUTION_ENVIRONMENT", "local") == "local"
-BUCKET = os.environ.get("BUCKET")
+BUCKET = os.environ.get("BUCKET", "jean-dev-bucket")
 
 ROOT = Path("./data-lake").resolve() if LOCAL else Path(f"s3://{BUCKET}/data-lake")
 RAW_DIR = Path("./data-lake").resolve() / "raw"  # Input JSON files
@@ -288,17 +288,17 @@ def transform_sql(segment="BUILDING", datadir=PROCESSED_DIR):
             aws_credentials.aws_secret_access_key,
             aws_credentials.region_name,
         )
-    with duck_connector.get_connection() as conn:
+    with duck_connector.get_connection():
         lineitem_path = str(datadir / "lineitem/*/*.parquet")
         orders_path = str(datadir / "orders/*/*.parquet")
         customer_path = str(datadir / "customer/*/*.parquet")
-        conn.execute(
+        duck_connector.execute(
             f"CREATE TABLE lineitem AS SELECT * FROM read_parquet('{lineitem_path}')"
         )
-        conn.execute(
+        duck_connector.execute(
             f"CREATE TABLE orders AS SELECT * FROM read_parquet('{orders_path}')"
         )
-        conn.execute(
+        duck_connector.execute(
             f"CREATE TABLE customer AS SELECT * FROM read_parquet('{customer_path}')"
         )
 
@@ -329,13 +329,13 @@ def transform_sql(segment="BUILDING", datadir=PROCESSED_DIR):
                 o_orderdate
             LIMIT 50;
             """
-        result = conn.sql(query)
+        result = duck_connector.sql(query, debug=True)
         print(result.show())
         result.create(segment)
         outfile = RESULTS_DIR / f"{segment}.snappy.parquet"
         if LOCAL:
             fs.makedirs(RESULTS_DIR, exist_ok=True)
-        conn.execute(
+        duck_connector.execute(
             f"""
         COPY
         (SELECT * FROM {segment})
@@ -402,8 +402,8 @@ def data_lake():
     """
     segments = ["automobile", "building", "furniture", "machinery", "household"]
     generate_data(1)
-    copy_to_parquet.map(list(RAW_DIR.rglob("*.json")))
-    transform_sql.map(segment=segments)
+    load = copy_to_parquet.map(list(RAW_DIR.rglob("*.json")))
+    transform_sql.map(segment=segments, wait_for=[load])
 
 
 if __name__ == "__main__":
