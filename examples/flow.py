@@ -25,11 +25,10 @@ from upath import UPath as Path
 
 from prefect_duckdb import DuckDBConnector
 
-LOCAL = os.environ.get("EXECUTION_ENVIRONMENT", "local") == "remote"
+LOCAL = os.environ.get("EXECUTION_ENVIRONMENT", "local") == "local"
+BUCKET = os.environ.get("BUCKET")
 
-ROOT = (
-    Path("./data-lake").resolve() if LOCAL else Path("s3://jean-dev-bucket/data-lake")
-)
+ROOT = Path("./data-lake").resolve() if LOCAL else Path(f"s3://{BUCKET}/data-lake")
 RAW_DIR = Path("./data-lake").resolve() / "raw"  # Input JSON files
 PROCESSED_DIR = ROOT / "processed"  # Processed Parquet files
 RESULTS_DIR = ROOT / "results"  # Reduced/aggrgated results
@@ -402,15 +401,17 @@ def data_lake():
     Data is then exported to parquet files.
     """
     segments = ["automobile", "building", "furniture", "machinery", "household"]
-    # generate_data(1)
-    # copy_to_parquet.map(list(RAW_DIR.rglob("*.json")))
+    generate_data(1)
+    copy_to_parquet.map(list(RAW_DIR.rglob("*.json")))
     transform_sql.map(segment=segments)
 
 
 if __name__ == "__main__":
     data_lake()
 
+    # This deployment will run using s3
     # data_lake.deploy(
     #     name="duckdb-tpch-cloud",
-    #     job_variables={"EXECUTION_ENVIRONMENT": "cloud"},
+    #     job_variables={"EXECUTION_ENVIRONMENT": "cloud",
+    #                    "BUCKET": "tpch-benchmark"},
     # )
