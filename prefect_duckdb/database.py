@@ -1,4 +1,4 @@
-"""Module for querying against Snowflake databases."""
+"""Module for querying against DuckDB databases."""
 
 import os
 import re
@@ -82,12 +82,12 @@ class DuckDBConnector(DatabaseBlock):
         self, read_only: Optional[bool] = None, config: Optional[dict] = None
     ) -> DuckDBPyConnection:
         """
-        Returns an authenticated connection that can be
-        used to query from Snowflake databases.
+        Returns a  DuckDB connection, if `mother_ducktoken` is found in enviroment
+        or config, it will be passed in the connection.
 
         Args:
-            **connect_kwargs: Additional arguments to pass to
-                `snowflake.connector.connect`.
+            read_only: Whether the connection should be read-only.
+            config: Configuration to be used when creating connection.
 
         Returns:
             A `DuckDBPyConnection` object.
