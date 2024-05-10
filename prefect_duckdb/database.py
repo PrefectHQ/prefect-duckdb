@@ -91,6 +91,7 @@ class DuckDBConnector(DatabaseBlock):
 
         Returns:
             A `DuckDBPyConnection` object.
+
         Examples:
             ```python
             from prefect_duckdb.database import DuckDBConnector
@@ -225,11 +226,7 @@ class DuckDBConnector(DatabaseBlock):
         """
         cursor = self._connection.cursor()
         if self._debug or debug:
-            debug_operation = f"""EXPLAIN \
-                            {operation}"""
-            plan = cursor.executemany(debug_operation, parameters)
-            plan = plan.arrow().column("explain_value")[0]
-            self.logger.info(f"""The query plan for the operation is: \n{plan}""")
+            await self.create_query_plan_markdown(operation, cursor, parameters)
         await run_sync_in_worker_thread(cursor.executemany, operation, parameters)
         self.logger.info(f"Executed {len(parameters)} operations off {operation!r}.")
         return cursor
@@ -276,12 +273,15 @@ class DuckDBConnector(DatabaseBlock):
     ) -> List[Tuple[Any]]:
         """
         Fetch multiple results from the database.
+
         Args:
             operation: The SQL operation to execute.
             parameters: The parameters to pass to the operation.
             size: The number of rows to fetch.
+
         Returns:
             A list of tuples representing the results.
+
         Examples:
             ```python
             from prefect_duckdb.database import DuckDBConnector
@@ -347,8 +347,10 @@ class DuckDBConnector(DatabaseBlock):
         Args:
             operation: The SQL operation to execute.
             parameters: The parameters to pass to the operation.
+
         Returns:
             A dictionary representing a numpy array.
+
         Examples:
             ```python
             from prefect_duckdb.database import DuckDBConnector
@@ -375,11 +377,14 @@ class DuckDBConnector(DatabaseBlock):
     ) -> pandas.DataFrame:
         """
         Fetch all results of the query from the database as a dataframe.
+
         Args:
             operation: The SQL operation to execute.
             parameters: The parameters to pass to the operation.
+
         Returns:
             A pandas dataframe.
+
         Examples:
             ```python
             from prefect_duckdb.database import DuckDBConnector
@@ -665,6 +670,7 @@ def duckdb_query(
     query: str,
     duckdb_connector: DuckDBConnector,
     parameters: Optional[Iterable[Any]] = [],
+    debug: Optional[bool] = False,
 ) -> List[Tuple[Any]]:
     """
     Execute a query against a DuckDB database.
@@ -673,8 +679,10 @@ def duckdb_query(
         query: The SQL query to execute.
         duckdb_connector: The DuckDBConnector block to use.
         parameters: The parameters to pass to the operation.
+
     Returns:
         A list of tuples representing the results.
+
     Examples:
         ```python
         from prefect import Flow
@@ -691,5 +699,5 @@ def duckdb_query(
         ```
 
     """
-    result = duckdb_connector.execute(query, parameters)
+    result = duckdb_connector.execute(query, parameters, debug=debug)
     return result
