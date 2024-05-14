@@ -206,6 +206,19 @@ class TestDuckDBConnector:
         result = duck_connector.fetch_one("SELECT add_one(1)")[0]
         assert result == 2
 
+    def test_create_secret(self, duck_connector: DuckDBConnector):
+        duck_connector.get_connection()
+        duck_connector.create_secret(
+            name="password",
+            secret_type="S3",
+            key_id="key",
+            secret="secret",
+            region="us-east-1",
+        )
+        result = duck_connector.fetch_one("SELECT * FROM duckdb_secrets();")
+        assert result[0] == "password"
+        assert result[1] == "s3"
+
     def test_duckdb_query(self, duck_connector):
         @flow
         def test_flow():
