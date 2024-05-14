@@ -234,6 +234,15 @@ class TestDuckDBConnector:
         result = test_df.execute("SELECT * FROM test_table").fetchall()
         assert result == [(1, "one"), (2, "two"), (3, "three")]
 
+    def test_from_arrow(self, duck_connector: DuckDBConnector):
+        import pyarrow as pa
+
+        duck_connector.get_connection()
+        test_table = pa.table({"i": [1, 2, 3], "j": ["one", "two", "three"]})
+        test_table = duck_connector.from_arrow(test_table, table_name="test_table")
+        result = duck_connector.execute("SELECT * FROM test_table").fetchall()
+        assert result == [(1, "one"), (2, "two"), (3, "three")]
+
     def test_create_function(self, duck_connector: DuckDBConnector):
         duck_connector.get_connection()
 
