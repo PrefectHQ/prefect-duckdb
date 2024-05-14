@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Iterable, List, Literal, Optional, Tuple
 
 import duckdb
 import pandas
+import pyarrow as pa
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from prefect import get_client, task
 from prefect.artifacts import create_markdown_artifact
@@ -559,15 +560,20 @@ class DuckDBConnector(DatabaseBlock):
         return cursor
 
     @sync_compatible
-    async def from_arrow(self, arrow_object) -> DuckDBPyRelation:
+    async def from_arrow(
+        self, arrow_object: pa.Table, table_name: Optional[str] = None
+    ) -> DuckDBPyRelation:
         """
         Create a table from an Arrow object.
 
         Args:
             arrow_object: The Arrow object.
         """
-        with self._connection.cursor() as cursor:
-            return await run_sync_in_worker_thread(cursor.from_arrow, arrow_object)
+        cursor = self._connection.cursor()
+        table = await run_sync_in_worker_thread(cursor.from_arrow, arrow_object)
+        if table_name:
+            await run_sync_in_worker_thread(cursor.register, table_name, table)
+        return cursor
 
     @sync_compatible
     async def from_parquet(
