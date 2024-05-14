@@ -215,9 +215,7 @@ def generate_data(scale: int = 1, path: Path = RAW_DIR):
                 / table
                 / f"{table}_{datetime.datetime.now().isoformat().split('.')[0]}.json"
             )
-
             fs.makedirs(outfile.parent, exist_ok=True)
-
             conn.sql(
                 f"""
                     COPY (SELECT * FROM {table})
@@ -268,7 +266,7 @@ def copy_to_parquet(file: Path, datadir: Path = PROCESSED_DIR):
 
 
 @task
-def transform_sql(segment="BUILDING", datadir=PROCESSED_DIR):
+def shipping_priority_query(segment, datadir=PROCESSED_DIR):
     """
     TPCH-Q3: Shipping Priority Query
     Retrieves the shipping priority and potential revenue of the orders
@@ -403,7 +401,7 @@ def data_lake():
     segments = ["automobile", "building", "furniture", "machinery", "household"]
     generate_data(1)
     load = copy_to_parquet.map(list(RAW_DIR.rglob("*.json")))
-    transform_sql.map(segment=segments, wait_for=[load])
+    shipping_priority_query.map(segment=segments, wait_for=[load])
 
 
 if __name__ == "__main__":
