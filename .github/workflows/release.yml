@@ -37,6 +37,8 @@ jobs:
     needs: [build-release]
     environment: "prod"
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
 
     steps:
       - name: Download build artifacts
@@ -47,9 +49,6 @@ jobs:
 
       - name: Publish distribution to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
-          verbose: true
 
   build-and-publish-docs:
     name: Build and publish docs
