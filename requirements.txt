@@ -135,5 +135,5 @@ urllib3==2.2.1
 uvicorn==0.28.1
 virtualenv==20.25.1
 watchdog==4.0.0
-websocket-client==1.7.0
+websocket-client==1.8.0
 websockets==12.0
