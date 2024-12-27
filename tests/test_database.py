@@ -1,12 +1,8 @@
-import re
-
 import pytest
 from duckdb import DuckDBPyConnection
 from prefect import flow
-
-from prefect.server import schemas
 from prefect.server.schemas.actions import ArtifactCreate
-import pydantic
+
 from prefect_duckdb.database import DuckDBConnector, duckdb_query
 
 qplan = """
@@ -86,7 +82,6 @@ class TestDuckDBConnector:
         cursor = duck_connector.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
         assert type(cursor) is DuckDBPyConnection
 
-
     def test_fetch_one(self, duck_connector: DuckDBConnector):
         duck_connector.get_connection()
         cursor = duck_connector.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
@@ -114,7 +109,6 @@ class TestDuckDBConnector:
         assert result == [(1, "one")]
 
     def test_fetch_numpy(self, duck_connector: DuckDBConnector):
-
         duck_connector.get_connection()
         duck_connector.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
         duck_connector.execute("INSERT INTO test_table VALUES (1, 'one')")
@@ -155,7 +149,9 @@ class TestDuckDBConnector:
         import pyarrow as pa
 
         connection = duck_connector.get_connection()
-        test_table = pa.Table.from_pydict({"i": [1, 2, 3], "j": ["one", "two", "three"]})
+        test_table = pa.Table.from_pydict(
+            {"i": [1, 2, 3], "j": ["one", "two", "three"]}
+        )
         assert test_table.to_pydict() == {"i": [1, 2, 3], "j": ["one", "two", "three"]}
 
         result = connection.execute("SELECT * FROM test_table").fetchall()

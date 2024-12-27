@@ -13,6 +13,8 @@ from prefect.artifacts import create_markdown_artifact
 from prefect.blocks.abstract import DatabaseBlock
 from prefect.utilities.asyncutils import run_sync_in_worker_thread, sync_compatible
 from pydantic import Field, SecretStr
+
+
 class DuckDBConnector(DatabaseBlock):
     """
     A block for connecting to a DuckDB database.
@@ -149,9 +151,7 @@ class DuckDBConnector(DatabaseBlock):
         if self._debug or debug:
             await self.create_query_plan_markdown(operation, cursor, parameters)
 
-        cursor = await run_sync_in_worker_thread(
-            cursor.execute, operation, parameters
-        )
+        cursor = await run_sync_in_worker_thread(cursor.execute, operation, parameters)
         self.logger.info(f"Executed the operation, {operation!r}.")
         return cursor
 
@@ -366,7 +366,6 @@ class DuckDBConnector(DatabaseBlock):
         self,
         operation: str,
         parameters: Optional[Dict[str, Any]] = [],
-
     ) -> pandas.DataFrame:
         """
         Fetch all results of the query from the database as a dataframe.
@@ -390,9 +389,7 @@ class DuckDBConnector(DatabaseBlock):
             ```
         """
         with self._connection.cursor() as cursor:
-            await run_sync_in_worker_thread(
-                cursor.execute, operation, parameters
-            )
+            await run_sync_in_worker_thread(cursor.execute, operation, parameters)
             self.logger.debug("Preparing to fetch all rows.")
             result = await run_sync_in_worker_thread(cursor.df)
             return result

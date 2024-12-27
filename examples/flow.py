@@ -197,7 +197,6 @@ def generate_data(scale: int = 1, path: Path = RAW_DIR):
                 )
             # Shift times to be more recent and lineitem prices to be non-uniform
             if table == "lineitem":
-
                 df["l_shipdate"] = new_time(
                     df["l_shipdate"], t_start=now, t_end=now + pd.Timedelta("3 days")
                 )
