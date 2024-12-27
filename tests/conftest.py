@@ -10,19 +10,14 @@ def prefect_db():
     """
     Sets up test harness for temporary DB during test runs.
     """
-    with prefect_test_harness():
-        yield
-
-
-@pytest.fixture(autouse=True)
-def reset_object_registry():
-    """
-    Ensures each test has a clean object registry.
-    """
-    from prefect.context import PrefectObjectRegistry
-
-    with PrefectObjectRegistry():
-        yield
+    try:
+        with prefect_test_harness():
+            yield
+    except OSError as e:
+        if "Directory not empty" in str(e):
+            pass
+        else:
+            raise e
 
 
 @pytest.fixture()
