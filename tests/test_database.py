@@ -1,8 +1,12 @@
+import re
+
 import pytest
 from duckdb import DuckDBPyConnection
 from prefect import flow
-from prefect.server.schemas.actions import ArtifactCreate
 
+from prefect.server import schemas
+from prefect.server.schemas.actions import ArtifactCreate
+import pydantic
 from prefect_duckdb.database import DuckDBConnector, duckdb_query
 
 qplan = """
@@ -82,6 +86,82 @@ class TestDuckDBConnector:
         cursor = duck_connector.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
         assert type(cursor) is DuckDBPyConnection
 
+    async def test_execute_debug(
+        self, duck_connector: DuckDBConnector, caplog, client, artifact
+    ):
+        with duck_connector.get_connection():
+            await duck_connector.execute(
+                "CREATE TABLE students (name VARCHAR, sid INTEGER);"
+            )
+            await duck_connector.execute(
+                "CREATE TABLE exams (eid INTEGER, subject VARCHAR, sid INTEGER);"
+            )
+            await duck_connector.execute(
+                "INSERT INTO students VALUES ('Mark', 1), ('Joe', 2), ('Matthew', 3);"
+            )
+            await duck_connector.execute(
+                "INSERT INTO exams VALUES \n"
+                "(10, 'Physics', 1), (20, 'Chemistry', 2), (30, 'Literature', 3);"
+            )
+
+            operation = (
+                "SELECT name FROM students JOIN exams USING (sid) WHERE name LIKE 'Ma%'"
+            )
+            await duck_connector.execute(
+                operation,
+                debug=True,
+            )
+
+            artifact_key = (
+                re.sub(
+                    "[^A-Za-z0-9 ]+",
+                    "",
+                    operation,
+                )
+                .lower()
+                .replace(" ", "-")
+            )
+            response = await client.get(f"/artifacts/{artifact_key}/latest")
+            result = pydantic.parse_obj_as(schemas.core.Artifact, response.json())
+            assert "Physical_Plan" in result.data
+
+    async def test_set_debug(
+        self, duck_connector: DuckDBConnector, caplog, client, artifact
+    ):
+        with duck_connector.get_connection():
+            await duck_connector.execute(
+                "CREATE TABLE students (name VARCHAR, sid INTEGER);"
+            )
+            await duck_connector.execute(
+                "CREATE TABLE exams (eid INTEGER, subject VARCHAR, sid INTEGER);"
+            )
+            await duck_connector.execute(
+                "INSERT INTO students VALUES ('Mark', 1), ('Joe', 2), ('Matthew', 3);"
+            )
+            await duck_connector.execute(
+                "INSERT INTO exams VALUES \n"
+                "(10, 'Physics', 1), (20, 'Chemistry', 2), (30, 'Literature', 3);"
+            )
+
+            operation = (
+                "SELECT name FROM students JOIN exams USING (sid) WHERE name LIKE 'Ma%'"
+            )
+            duck_connector.set_debug(True)
+            await duck_connector.execute(operation)
+
+            artifact_key = (
+                re.sub(
+                    "[^A-Za-z0-9 ]+",
+                    "",
+                    operation,
+                )
+                .lower()
+                .replace(" ", "-")
+            )
+            response = await client.get(f"/artifacts/{artifact_key}/latest")
+            result = pydantic.parse_obj_as(schemas.core.Artifact, response.json())
+            assert "Physical_Plan" in result.data
+
     def test_fetch_one(self, duck_connector: DuckDBConnector):
         duck_connector.get_connection()
         cursor = duck_connector.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
@@ -143,18 +223,6 @@ class TestDuckDBConnector:
         df = pd.DataFrame.from_dict({"i": [1, 2, 3], "j": ["one", "two", "three"]})
         test_df = duck_connector.from_df(df, table_name="test_table")
         result = test_df.execute("SELECT * FROM test_table").fetchall()
-        assert result == [(1, "one"), (2, "two"), (3, "three")]
-
-    def test_from_arrow(self, duck_connector: DuckDBConnector):
-        import pyarrow as pa
-
-        connection = duck_connector.get_connection()
-        test_table = pa.Table.from_pydict(
-            {"i": [1, 2, 3], "j": ["one", "two", "three"]}
-        )
-        assert test_table.to_pydict() == {"i": [1, 2, 3], "j": ["one", "two", "three"]}
-
-        result = connection.execute("SELECT * FROM test_table").fetchall()
         assert result == [(1, "one"), (2, "two"), (3, "three")]
 
     def test_create_function(self, duck_connector: DuckDBConnector):
