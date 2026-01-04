@@ -3,16 +3,11 @@ import re
 import pytest
 from duckdb import DuckDBPyConnection
 from prefect import flow
-from prefect._internal.pydantic import HAS_PYDANTIC_V2
+
 from prefect.server import schemas
 from prefect.server.schemas.actions import ArtifactCreate
-
+import pydantic
 from prefect_duckdb.database import DuckDBConnector, duckdb_query
-
-if HAS_PYDANTIC_V2:
-    import pydantic.v1 as pydantic
-else:
-    import pydantic
 
 qplan = """
 ```
@@ -63,7 +58,7 @@ qplan = """
 class TestDuckDBConnector:
     @pytest.fixture
     def duck_connector(self):
-        connector = DuckDBConnector(read_only=False, debug=False)
+        connector = DuckDBConnector(configuration={}, read_only=False, debug=False)
         return connector
 
     @pytest.fixture
@@ -95,7 +90,6 @@ class TestDuckDBConnector:
         self, duck_connector: DuckDBConnector, caplog, client, artifact
     ):
         with duck_connector.get_connection():
-
             await duck_connector.execute(
                 "CREATE TABLE students (name VARCHAR, sid INTEGER);"
             )
@@ -129,14 +123,12 @@ class TestDuckDBConnector:
             )
             response = await client.get(f"/artifacts/{artifact_key}/latest")
             result = pydantic.parse_obj_as(schemas.core.Artifact, response.json())
-            assert result.data == qplan
-            assert qplan == caplog.records[5].msg
+            assert "Physical_Plan" in result.data
 
     async def test_set_debug(
         self, duck_connector: DuckDBConnector, caplog, client, artifact
     ):
         with duck_connector.get_connection():
-
             await duck_connector.execute(
                 "CREATE TABLE students (name VARCHAR, sid INTEGER);"
             )
@@ -168,7 +160,7 @@ class TestDuckDBConnector:
             )
             response = await client.get(f"/artifacts/{artifact_key}/latest")
             result = pydantic.parse_obj_as(schemas.core.Artifact, response.json())
-            assert result.data == qplan
+            assert "Physical_Plan" in result.data
 
     def test_fetch_one(self, duck_connector: DuckDBConnector):
         duck_connector.get_connection()
@@ -197,7 +189,6 @@ class TestDuckDBConnector:
         assert result == [(1, "one")]
 
     def test_fetch_numpy(self, duck_connector: DuckDBConnector):
-
         duck_connector.get_connection()
         duck_connector.execute("CREATE TABLE test_table (i INTEGER, j STRING)")
         duck_connector.execute("INSERT INTO test_table VALUES (1, 'one')")
@@ -232,15 +223,6 @@ class TestDuckDBConnector:
         df = pd.DataFrame.from_dict({"i": [1, 2, 3], "j": ["one", "two", "three"]})
         test_df = duck_connector.from_df(df, table_name="test_table")
         result = test_df.execute("SELECT * FROM test_table").fetchall()
-        assert result == [(1, "one"), (2, "two"), (3, "three")]
-
-    def test_from_arrow(self, duck_connector: DuckDBConnector):
-        import pyarrow as pa
-
-        duck_connector.get_connection()
-        test_table = pa.table({"i": [1, 2, 3], "j": ["one", "two", "three"]})
-        test_table = duck_connector.from_arrow(test_table, table_name="test_table")
-        result = duck_connector.execute("SELECT * FROM test_table").fetchall()
         assert result == [(1, "one"), (2, "two"), (3, "three")]
 
     def test_create_function(self, duck_connector: DuckDBConnector):

@@ -6,18 +6,12 @@ from typing import Any, Callable, Dict, Iterable, List, Literal, Optional, Tuple
 
 import duckdb
 import pandas
-import pyarrow as pa
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from prefect import get_client, task
 from prefect.artifacts import create_markdown_artifact
 from prefect.blocks.abstract import DatabaseBlock
 from prefect.utilities.asyncutils import run_sync_in_worker_thread, sync_compatible
-from pydantic import VERSION as PYDANTIC_VERSION
-
-if PYDANTIC_VERSION.startswith("2."):
-    from pydantic.v1 import Field, SecretStr
-else:
-    from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr
 
 
 class DuckDBConnector(DatabaseBlock):
@@ -67,7 +61,7 @@ class DuckDBConnector(DatabaseBlock):
     _description = "Perform data operations against a DuckDb database."
 
     configuration: Optional[dict] = Field(
-        default=None, description="Configuration to be used when creating connection."
+        default=..., description="Configuration to be used when creating connection."
     )
     database: str = Field(
         default=":memory:", description="The name of the default database to use."
@@ -128,7 +122,6 @@ class DuckDBConnector(DatabaseBlock):
         self,
         operation: str,
         parameters: Optional[Iterable[Any]] = [],
-        multiple_parameter_sets: bool = False,
         debug: Optional[bool] = False,
     ) -> DuckDBPyConnection:
         """
@@ -157,9 +150,7 @@ class DuckDBConnector(DatabaseBlock):
         if self._debug or debug:
             await self.create_query_plan_markdown(operation, cursor, parameters)
 
-        cursor = await run_sync_in_worker_thread(
-            cursor.execute, operation, parameters, multiple_parameter_sets
-        )
+        cursor = await run_sync_in_worker_thread(cursor.execute, operation, parameters)
         self.logger.info(f"Executed the operation, {operation!r}.")
         return cursor
 
@@ -374,7 +365,6 @@ class DuckDBConnector(DatabaseBlock):
         self,
         operation: str,
         parameters: Optional[Dict[str, Any]] = [],
-        date_as_object: bool = False,
     ) -> pandas.DataFrame:
         """
         Fetch all results of the query from the database as a dataframe.
@@ -398,9 +388,7 @@ class DuckDBConnector(DatabaseBlock):
             ```
         """
         with self._connection.cursor() as cursor:
-            await run_sync_in_worker_thread(
-                cursor.execute, operation, parameters, date_as_object
-            )
+            await run_sync_in_worker_thread(cursor.execute, operation, parameters)
             self.logger.debug("Preparing to fetch all rows.")
             result = await run_sync_in_worker_thread(cursor.df)
             return result
@@ -555,22 +543,6 @@ class DuckDBConnector(DatabaseBlock):
         """
         cursor = self._connection.cursor()
         table = await run_sync_in_worker_thread(cursor.from_df, df)
-        if table_name:
-            await run_sync_in_worker_thread(cursor.register, table_name, table)
-        return cursor
-
-    @sync_compatible
-    async def from_arrow(
-        self, arrow_object: pa.Table, table_name: Optional[str] = None
-    ) -> DuckDBPyRelation:
-        """
-        Create a table from an Arrow object.
-
-        Args:
-            arrow_object: The Arrow object.
-        """
-        cursor = self._connection.cursor()
-        table = await run_sync_in_worker_thread(cursor.from_arrow, arrow_object)
         if table_name:
             await run_sync_in_worker_thread(cursor.register, table_name, table)
         return cursor
